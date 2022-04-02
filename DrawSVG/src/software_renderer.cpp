@@ -294,11 +294,38 @@ void SoftwareRendererImp::rasterize_line(float x0, float y0, float x1, float y1,
     }
 }
 
+inline bool test_half_plane(float x, float y, float x0, float y0,
+                            float x1, float y1, float x2, float y2) {
+    // Test if point (x,y) is in same half plane as (x2, y2)
+    // splitted by line through (x0,y0) -> (x1, y1)
+    float a = y1 - y0, b = x0 - x1, c = y0 * (x1 - x0) - x0 * (y1 - y0);
+    float eval_pt = a * x + b * y + c, eval_test = a * x2 + b * y2 + c;
+    if ((eval_pt >= 0 && eval_test >= 0) || (eval_pt < 0 && eval_test < 0)) {
+        return true;
+    }
+    return false;
+}
+
 void SoftwareRendererImp::rasterize_triangle(float x0, float y0, float x1,
                                              float y1, float x2, float y2,
                                              Color color) {
     // Task 3:
     // Implement triangle rasterization
+    // Naive traingle rasterizer
+
+    int min_x = (int)floor(min(x0, min(x1, x2))), max_x = (int)ceil(max(x0, max(x1, x2)));
+    int min_y = (int)floor(min(y0, min(y1, y2))), max_y = (int)ceil(max(y0, max(y1, y2)));
+
+    for (int i = max(min_y, 0); i < min(max_y, (int)target_h); i++) {
+        for (int j = max(min_x, 0); j < min(max_x, (int)target_w); j++) {
+            float x = j + 0.5, y = i + 0.5;
+            if (test_half_plane(x, y, x0, y0, x1, y1, x2, y2) &&
+                test_half_plane(x, y, x1, y1, x2, y2, x0, y0) &&
+                test_half_plane(x, y, x0, y0, x2, y2, x1, y1)) {
+                rasterize_point(x, y, color);
+            }
+        }
+    }
 }
 
 void SoftwareRendererImp::rasterize_image(float x0, float y0, float x1,

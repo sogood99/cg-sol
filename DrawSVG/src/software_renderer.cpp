@@ -65,7 +65,6 @@ void SoftwareRendererImp::set_render_target(unsigned char* render_target,
 
 void SoftwareRendererImp::init_supersample() {
     // Initialize the supersampling buffer
-    cout << this->target_h << " " << this->target_w << " " << this->sample_rate << endl;
 
     if (this->supersample_target != nullptr) {
         delete[] this->supersample_target;
@@ -77,6 +76,10 @@ void SoftwareRendererImp::init_supersample() {
 void SoftwareRendererImp::draw_element(SVGElement* element) {
     // Task 5 (part 1):
     // Modify this to implement the transformation stack
+
+    // save the transformation for stack
+    Matrix3x3 past_transformation = transformation;
+    transformation = transformation * element->transform;
 
     switch (element->type) {
         case POINT:
@@ -106,6 +109,9 @@ void SoftwareRendererImp::draw_element(SVGElement* element) {
         default:
             break;
     }
+
+    // restore the stack
+    transformation = past_transformation;
 }
 
 // Primitive Drawing //

@@ -49,6 +49,7 @@ void SoftwareRendererImp::set_sample_rate(size_t sample_rate) {
     // Task 4:
     // You may want to modify this for supersampling support
     this->sample_rate = sample_rate;
+    init_supersample();
 }
 
 void SoftwareRendererImp::set_render_target(unsigned char* render_target,
@@ -58,6 +59,19 @@ void SoftwareRendererImp::set_render_target(unsigned char* render_target,
     this->render_target = render_target;
     this->target_w = width;
     this->target_h = height;
+
+    init_supersample();
+}
+
+void SoftwareRendererImp::init_supersample() {
+    // Initialize the supersampling buffer
+    cout << this->target_h << " " << this->target_w << " " << this->sample_rate << endl;
+
+    if (this->supersample_target != nullptr) {
+        delete[] this->supersample_target;
+    }
+    this->supersample_target = new unsigned char[4 * this->target_w * this->target_h * sample_rate * sample_rate];
+    memset(this->supersample_target, 255, 4 * this->target_w * this->target_h * sample_rate * sample_rate);
 }
 
 void SoftwareRendererImp::draw_element(SVGElement* element) {
@@ -214,10 +228,12 @@ void SoftwareRendererImp::rasterize_point(float x, float y, Color color) {
     if (sy < 0 || sy >= target_h) return;
 
     // fill sample - NOT doing alpha blending!
-    render_target[4 * (sx + sy * target_w)] = (uint8_t)(color.r * 255);
-    render_target[4 * (sx + sy * target_w) + 1] = (uint8_t)(color.g * 255);
-    render_target[4 * (sx + sy * target_w) + 2] = (uint8_t)(color.b * 255);
-    render_target[4 * (sx + sy * target_w) + 3] = (uint8_t)(color.a * 255);
+    for (int k = 0; k < sample_rate; k++) {
+        supersample_target[4 * (sx * sample_rate + sy * target_w * sample_rate + k) + 0] = color.r * 255;
+        supersample_target[4 * (sx * sample_rate + sy * target_w * sample_rate + k) + 1] = color.g * 255;
+        supersample_target[4 * (sx * sample_rate + sy * target_w * sample_rate + k) + 2] = color.b * 255;
+        supersample_target[4 * (sx * sample_rate + sy * target_w * sample_rate + k) + 3] = color.a * 255;
+    }
 }
 
 inline void swap(float* a, float* b) {
@@ -318,11 +334,16 @@ void SoftwareRendererImp::rasterize_triangle(float x0, float y0, float x1,
 
     for (int i = max(min_y, 0); i < min(max_y, (int)target_h); i++) {
         for (int j = max(min_x, 0); j < min(max_x, (int)target_w); j++) {
-            float x = j + 0.5, y = i + 0.5;
-            if (test_half_plane(x, y, x0, y0, x1, y1, x2, y2) &&
-                test_half_plane(x, y, x1, y1, x2, y2, x0, y0) &&
-                test_half_plane(x, y, x0, y0, x2, y2, x1, y1)) {
-                rasterize_point(x, y, color);
+            for (int k = 0; k < sample_rate; k++) {
+                float x = j + (float)(2 * k + 1) / (2 * sample_rate), y = i + (float)(2 * k + 1) / (2 * sample_rate);
+                if (test_half_plane(x, y, x0, y0, x1, y1, x2, y2) &&
+                    test_half_plane(x, y, x1, y1, x2, y2, x0, y0) &&
+                    test_half_plane(x, y, x0, y0, x2, y2, x1, y1)) {
+                    supersample_target[4 * (j * sample_rate + i * target_w * sample_rate + k) + 0] = color.r * 255;
+                    supersample_target[4 * (j * sample_rate + i * target_w * sample_rate + k) + 1] = color.g * 255;
+                    supersample_target[4 * (j * sample_rate + i * target_w * sample_rate + k) + 2] = color.b * 255;
+                    supersample_target[4 * (j * sample_rate + i * target_w * sample_rate + k) + 3] = color.a * 255;
+                }
             }
         }
     }
@@ -339,6 +360,24 @@ void SoftwareRendererImp::resolve(void) {
     // Task 4:
     // Implement supersampling
     // You may also need to modify other functions marked with "Task 4".
+
+    for (int i = 0; i < target_h; i++) {
+        for (int j = 0; j < target_w; j++) {
+            render_target[4 * (j + i * target_w) + 0] = 0;  // r
+            render_target[4 * (j + i * target_w) + 1] = 0;  // g
+            render_target[4 * (j + i * target_w) + 2] = 0;  // b
+            render_target[4 * (j + i * target_w) + 3] = 0;  // a
+
+            for (int k = 0; k < sample_rate; k++) {
+                render_target[4 * (j + i * target_w) + 0] += supersample_target[4 * (j * sample_rate + i * target_w * sample_rate + k) + 0] / sample_rate;
+                render_target[4 * (j + i * target_w) + 1] += supersample_target[4 * (j * sample_rate + i * target_w * sample_rate + k) + 1] / sample_rate;
+                render_target[4 * (j + i * target_w) + 2] += supersample_target[4 * (j * sample_rate + i * target_w * sample_rate + k) + 2] / sample_rate;
+                render_target[4 * (j + i * target_w) + 3] += supersample_target[4 * (j * sample_rate + i * target_w * sample_rate + k) + 3] / sample_rate;
+            }
+        }
+    }
+
+    memset(this->supersample_target, 255, 4 * this->target_w * this->target_h * sample_rate * sample_rate);
     return;
 }
 

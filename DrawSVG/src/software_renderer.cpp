@@ -359,6 +359,25 @@ void SoftwareRendererImp::rasterize_image(float x0, float y0, float x1,
                                           float y1, Texture& tex) {
     // Task 6:
     // Implement image rasterization
+    int min_x = (int)floor(min(x0, x1)), max_x = (int)ceil(max(x0, x1));
+    int min_y = (int)floor(min(y0, y1)), max_y = (int)ceil(max(y0, y1));
+
+    for (int i = max(min_y, 0); i < min(max_y, (int)target_h); i++) {
+        for (int j = max(min_x, 0); j < min(max_x, (int)target_w); j++) {
+            for (int k = 0; k < sample_rate; k++) {
+                float x = j + (float)(2 * k + 1) / (2 * sample_rate), y = i + (float)(2 * k + 1) / (2 * sample_rate);
+
+                float u = (x - x0) / (x1 - x0), v = (y - y0) / (y1 - y0);
+                // Color color = sampler->sample_bilinear(tex, u, v, 0);
+                Color color = sampler->sample_trilinear(tex, u, v, 250 / (x1 - x0), 250 / (y1 - y0));
+
+                supersample_target[4 * (j * sample_rate + i * target_w * sample_rate + k) + 0] = color.r;
+                supersample_target[4 * (j * sample_rate + i * target_w * sample_rate + k) + 1] = color.g;
+                supersample_target[4 * (j * sample_rate + i * target_w * sample_rate + k) + 2] = color.b;
+                supersample_target[4 * (j * sample_rate + i * target_w * sample_rate + k) + 3] = color.a;
+            }
+        }
+    }
 }
 
 // resolve samples to render target

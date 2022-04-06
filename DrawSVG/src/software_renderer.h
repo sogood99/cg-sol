@@ -79,6 +79,7 @@ class SoftwareRendererImp : public SoftwareRenderer {
    private:
     // Render target memory location
     unsigned char* supersample_target = nullptr;
+    bool* supersample_isset = nullptr;
 
     void init_supersample();
 

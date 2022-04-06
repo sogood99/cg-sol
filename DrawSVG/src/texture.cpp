@@ -100,7 +100,7 @@ Color Sampler2DImp::sample_nearest(Texture& tex,
     } else {
         Color color;
         int w = tex.mipmap[level].width, h = tex.mipmap[level].height;
-        int i = v * h, j = u * w;
+        int i = floor(v * h), j = floor(u * w);
         std::vector<unsigned char>& tex_level = tex.mipmap[level].texels;
 
         color.r = tex_level[4 * (j + w * i) + 0];

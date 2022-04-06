@@ -69,8 +69,13 @@ void SoftwareRendererImp::init_supersample() {
     if (this->supersample_target != nullptr) {
         delete[] this->supersample_target;
     }
+    if (this->supersample_isset != nullptr) {
+        delete[] this->supersample_isset;
+    }
     this->supersample_target = new unsigned char[4 * this->target_w * this->target_h * sample_rate * sample_rate];
+    this->supersample_isset = new bool[this->target_w * this->target_h * sample_rate * sample_rate];
     memset(this->supersample_target, 255, 4 * this->target_w * this->target_h * sample_rate * sample_rate);
+    memset(this->supersample_isset, false, this->target_w * this->target_h * sample_rate * sample_rate);
 }
 
 void SoftwareRendererImp::draw_element(SVGElement* element) {
@@ -221,6 +226,36 @@ void SoftwareRendererImp::draw_group(Group& group) {
 
 // Rasterization //
 
+inline Color over(Color over_color, Color under_color) {
+    // assumes non-premultiplied alphas
+
+    // pre-multiply alpha
+    over_color.r *= over_color.a;
+    over_color.g *= over_color.a;
+    over_color.b *= over_color.a;
+    under_color.r *= under_color.a;
+    under_color.g *= under_color.a;
+    under_color.b *= under_color.a;
+
+    Color c;
+    c.r = over_color.r + (1 - over_color.a) * under_color.r;
+    c.g = over_color.g + (1 - over_color.a) * under_color.g;
+    c.b = over_color.b + (1 - over_color.a) * under_color.b;
+    c.a = over_color.a + (1 - over_color.a) * under_color.a;
+    return c;
+}
+
+inline unsigned char* ret_ptr(unsigned char* arr, int sx, int sy, int kx, int ky,
+                              int w, int sample_rate, int k = 0, bool is_rgba = false) {
+    int c = is_rgba ? 4 : 1;
+    return (arr + c * ((sx * sample_rate + kx) + (sy * sample_rate + ky) * w * sample_rate) + k);
+}
+inline bool* ret_ptr(bool* arr, int sx, int sy, int kx, int ky,
+                     int w, int sample_rate, int k = 0, bool is_rgba = false) {
+    int c = is_rgba ? 4 : 1;
+    return (arr + c * ((sx * sample_rate + kx) + (sy * sample_rate + ky) * w * sample_rate) + k);
+}
+
 // The input arguments in the rasterization functions
 // below are all defined in screen space coordinates
 
@@ -233,12 +268,27 @@ void SoftwareRendererImp::rasterize_point(float x, float y, Color color) {
     if (sx < 0 || sx >= target_w) return;
     if (sy < 0 || sy >= target_h) return;
 
-    // fill sample - NOT doing alpha blending!
-    for (int k = 0; k < sample_rate; k++) {
-        supersample_target[4 * (sx * sample_rate + sy * target_w * sample_rate + k) + 0] = color.r * 255;
-        supersample_target[4 * (sx * sample_rate + sy * target_w * sample_rate + k) + 1] = color.g * 255;
-        supersample_target[4 * (sx * sample_rate + sy * target_w * sample_rate + k) + 2] = color.b * 255;
-        supersample_target[4 * (sx * sample_rate + sy * target_w * sample_rate + k) + 3] = color.a * 255;
+    Color new_color;
+    for (int kx = 0; kx < sample_rate; kx++) {
+        for (int ky = 0; ky < sample_rate; ky++) {
+            if (*ret_ptr(supersample_isset, sx, sy, kx, ky, target_w, sample_rate) == true) {
+                Color under_color;
+                under_color.r = *ret_ptr(supersample_target, sx, sy, kx, ky, target_w, sample_rate, 0, true) / 255.;
+                under_color.g = *ret_ptr(supersample_target, sx, sy, kx, ky, target_w, sample_rate, 1, true) / 255.;
+                under_color.b = *ret_ptr(supersample_target, sx, sy, kx, ky, target_w, sample_rate, 2, true) / 255.;
+                under_color.a = *ret_ptr(supersample_target, sx, sy, kx, ky, target_w, sample_rate, 3, true) / 255.;
+
+                new_color = over(color, under_color);
+            } else {
+                new_color = color;
+
+                *ret_ptr(supersample_isset, sx, sy, kx, ky, target_w, sample_rate) = true;
+            }
+            *ret_ptr(supersample_target, sx, sy, kx, ky, target_w, sample_rate, 0, true) = new_color.r * 255;
+            *ret_ptr(supersample_target, sx, sy, kx, ky, target_w, sample_rate, 1, true) = new_color.g * 255;
+            *ret_ptr(supersample_target, sx, sy, kx, ky, target_w, sample_rate, 2, true) = new_color.b * 255;
+            *ret_ptr(supersample_target, sx, sy, kx, ky, target_w, sample_rate, 3, true) = new_color.a * 255;
+        }
     }
 }
 
@@ -338,17 +388,33 @@ void SoftwareRendererImp::rasterize_triangle(float x0, float y0, float x1,
     int min_x = (int)floor(min(x0, min(x1, x2))), max_x = (int)ceil(max(x0, max(x1, x2)));
     int min_y = (int)floor(min(y0, min(y1, y2))), max_y = (int)ceil(max(y0, max(y1, y2)));
 
+    Color new_color;
     for (int i = max(min_y, 0); i < min(max_y, (int)target_h); i++) {
         for (int j = max(min_x, 0); j < min(max_x, (int)target_w); j++) {
-            for (int k = 0; k < sample_rate; k++) {
-                float x = j + (float)(2 * k + 1) / (2 * sample_rate), y = i + (float)(2 * k + 1) / (2 * sample_rate);
-                if (test_half_plane(x, y, x0, y0, x1, y1, x2, y2) &&
-                    test_half_plane(x, y, x1, y1, x2, y2, x0, y0) &&
-                    test_half_plane(x, y, x0, y0, x2, y2, x1, y1)) {
-                    supersample_target[4 * (j * sample_rate + i * target_w * sample_rate + k) + 0] = color.r * 255;
-                    supersample_target[4 * (j * sample_rate + i * target_w * sample_rate + k) + 1] = color.g * 255;
-                    supersample_target[4 * (j * sample_rate + i * target_w * sample_rate + k) + 2] = color.b * 255;
-                    supersample_target[4 * (j * sample_rate + i * target_w * sample_rate + k) + 3] = color.a * 255;
+            for (int kx = 0; kx < sample_rate; kx++) {
+                for (int ky = 0; ky < sample_rate; ky++) {
+                    float x = j + (float)(2 * kx + 1) / (2 * sample_rate), y = i + (float)(2 * ky + 1) / (2 * sample_rate);
+                    if (test_half_plane(x, y, x0, y0, x1, y1, x2, y2) &&
+                        test_half_plane(x, y, x1, y1, x2, y2, x0, y0) &&
+                        test_half_plane(x, y, x0, y0, x2, y2, x1, y1)) {
+                        if (*ret_ptr(supersample_isset, j, i, kx, ky, target_w, sample_rate) == true) {
+                            Color under_color;
+                            under_color.r = *ret_ptr(supersample_target, j, i, kx, ky, target_w, sample_rate, 0, true) / 255.;
+                            under_color.g = *ret_ptr(supersample_target, j, i, kx, ky, target_w, sample_rate, 1, true) / 255.;
+                            under_color.b = *ret_ptr(supersample_target, j, i, kx, ky, target_w, sample_rate, 2, true) / 255.;
+                            under_color.a = *ret_ptr(supersample_target, j, i, kx, ky, target_w, sample_rate, 3, true) / 255.;
+
+                            new_color = over(color, under_color);
+                        } else {
+                            new_color = color;
+
+                            *ret_ptr(supersample_isset, j, i, kx, ky, target_w, sample_rate) = true;
+                        }
+                        *ret_ptr(supersample_target, j, i, kx, ky, target_w, sample_rate, 0, true) = new_color.r * 255;
+                        *ret_ptr(supersample_target, j, i, kx, ky, target_w, sample_rate, 1, true) = new_color.g * 255;
+                        *ret_ptr(supersample_target, j, i, kx, ky, target_w, sample_rate, 2, true) = new_color.b * 255;
+                        *ret_ptr(supersample_target, j, i, kx, ky, target_w, sample_rate, 3, true) = new_color.a * 255;
+                    }
                 }
             }
         }
@@ -362,19 +428,40 @@ void SoftwareRendererImp::rasterize_image(float x0, float y0, float x1,
     int min_x = (int)floor(min(x0, x1)), max_x = (int)ceil(max(x0, x1));
     int min_y = (int)floor(min(y0, y1)), max_y = (int)ceil(max(y0, y1));
 
+    Color new_color;
     for (int i = max(min_y, 0); i < min(max_y, (int)target_h); i++) {
         for (int j = max(min_x, 0); j < min(max_x, (int)target_w); j++) {
-            for (int k = 0; k < sample_rate; k++) {
-                float x = j + (float)(2 * k + 1) / (2 * sample_rate), y = i + (float)(2 * k + 1) / (2 * sample_rate);
+            for (int kx = 0; kx < sample_rate; kx++) {
+                for (int ky = 0; ky < sample_rate; ky++) {
+                    float x = j + (float)(2 * kx + 1) / (2 * sample_rate), y = i + (float)(2 * ky + 1) / (2 * sample_rate);
 
-                float u = (x - x0) / (x1 - x0), v = (y - y0) / (y1 - y0);
-                // Color color = sampler->sample_bilinear(tex, u, v, 0);
-                Color color = sampler->sample_trilinear(tex, u, v, 250 / (x1 - x0), 250 / (y1 - y0));
+                    float u = (x - x0) / (x1 - x0), v = (y - y0) / (y1 - y0);
+                    // Color color = sampler->sample_nearest(tex, u, v, 0);
+                    // Color color = sampler->sample_bilinear(tex, u, v, 0);
+                    Color color = sampler->sample_trilinear(tex, u, v, 250 / (x1 - x0), 250 / (y1 - y0));
+                    color.r /= 255.;
+                    color.g /= 255.;
+                    color.b /= 255.;
+                    color.a /= 255.;
 
-                supersample_target[4 * (j * sample_rate + i * target_w * sample_rate + k) + 0] = color.r;
-                supersample_target[4 * (j * sample_rate + i * target_w * sample_rate + k) + 1] = color.g;
-                supersample_target[4 * (j * sample_rate + i * target_w * sample_rate + k) + 2] = color.b;
-                supersample_target[4 * (j * sample_rate + i * target_w * sample_rate + k) + 3] = color.a;
+                    if (*ret_ptr(supersample_isset, j, i, kx, ky, target_w, sample_rate) == true) {
+                        Color under_color;
+                        under_color.r = *ret_ptr(supersample_target, j, i, kx, ky, target_w, sample_rate, 0, true) / 255.;
+                        under_color.g = *ret_ptr(supersample_target, j, i, kx, ky, target_w, sample_rate, 1, true) / 255.;
+                        under_color.b = *ret_ptr(supersample_target, j, i, kx, ky, target_w, sample_rate, 2, true) / 255.;
+                        under_color.a = *ret_ptr(supersample_target, j, i, kx, ky, target_w, sample_rate, 3, true) / 255.;
+
+                        new_color = over(color, under_color);
+                    } else {
+                        new_color = color;
+
+                        *ret_ptr(supersample_isset, j, i, kx, ky, target_w, sample_rate) = true;
+                    }
+                    *ret_ptr(supersample_target, j, i, kx, ky, target_w, sample_rate, 0, true) = new_color.r * 255;
+                    *ret_ptr(supersample_target, j, i, kx, ky, target_w, sample_rate, 1, true) = new_color.g * 255;
+                    *ret_ptr(supersample_target, j, i, kx, ky, target_w, sample_rate, 2, true) = new_color.b * 255;
+                    *ret_ptr(supersample_target, j, i, kx, ky, target_w, sample_rate, 3, true) = new_color.a * 255;
+                }
             }
         }
     }
@@ -393,16 +480,19 @@ void SoftwareRendererImp::resolve(void) {
             render_target[4 * (j + i * target_w) + 2] = 0;  // b
             render_target[4 * (j + i * target_w) + 3] = 0;  // a
 
-            for (int k = 0; k < sample_rate; k++) {
-                render_target[4 * (j + i * target_w) + 0] += supersample_target[4 * (j * sample_rate + i * target_w * sample_rate + k) + 0] / sample_rate;
-                render_target[4 * (j + i * target_w) + 1] += supersample_target[4 * (j * sample_rate + i * target_w * sample_rate + k) + 1] / sample_rate;
-                render_target[4 * (j + i * target_w) + 2] += supersample_target[4 * (j * sample_rate + i * target_w * sample_rate + k) + 2] / sample_rate;
-                render_target[4 * (j + i * target_w) + 3] += supersample_target[4 * (j * sample_rate + i * target_w * sample_rate + k) + 3] / sample_rate;
+            for (int kx = 0; kx < sample_rate; kx++) {
+                for (int ky = 0; ky < sample_rate; ky++) {
+                    render_target[4 * (j + i * target_w) + 0] += *ret_ptr(supersample_target, j, i, kx, ky, target_w, sample_rate, 0, true) / (sample_rate * sample_rate);
+                    render_target[4 * (j + i * target_w) + 1] += *ret_ptr(supersample_target, j, i, kx, ky, target_w, sample_rate, 1, true) / (sample_rate * sample_rate);
+                    render_target[4 * (j + i * target_w) + 2] += *ret_ptr(supersample_target, j, i, kx, ky, target_w, sample_rate, 2, true) / (sample_rate * sample_rate);
+                    render_target[4 * (j + i * target_w) + 3] += *ret_ptr(supersample_target, j, i, kx, ky, target_w, sample_rate, 3, true) / (sample_rate * sample_rate);
+                }
             }
         }
     }
 
     memset(this->supersample_target, 255, 4 * this->target_w * this->target_h * sample_rate * sample_rate);
+    memset(this->supersample_isset, false, this->target_w * this->target_h * sample_rate * sample_rate);
     return;
 }
 

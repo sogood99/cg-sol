@@ -189,11 +189,10 @@ endif()
 set_target_properties(Scotty3D PROPERTIES
                       CXX_STANDARD 17
                       CXX_EXTENSIONS OFF)
-
 if(MSVC)
     target_compile_options(Scotty3D PRIVATE /MP /W4 /WX /wd4201 /wd4840 /wd4100 /wd4505 /fp:fast)
 else()
-    target_compile_options(Scotty3D PRIVATE -Wall -Wextra -Werror -Wno-reorder -Wno-unused-function -Wno-unused-parameter)
+    target_compile_options(Scotty3D PRIVATE -std=c++17 -Wall -Wextra -Werror -Wno-reorder -Wno-unused-function -Wno-unused-parameter)
 endif()
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
@@ -205,7 +204,6 @@ endif()
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
 target_link_libraries(Scotty3D PRIVATE Threads::Threads)
-
 
 
 # define include paths

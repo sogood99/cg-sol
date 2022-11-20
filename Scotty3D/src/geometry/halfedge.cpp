@@ -1,4 +1,3 @@
-
 #include "halfedge.h"
 
 #include <map>

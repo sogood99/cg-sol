@@ -1,4 +1,3 @@
-
 #include "animate.h"
 #include "../scene/renderer.h"
 #include "manager.h"

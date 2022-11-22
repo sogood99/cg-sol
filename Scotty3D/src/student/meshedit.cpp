@@ -1,4 +1,3 @@
-
 #include <queue>
 #include <set>
 #include <unordered_map>
@@ -35,9 +34,53 @@
     edges and faces with a single face, returning the new face.
  */
 std::optional<Halfedge_Mesh::FaceRef> Halfedge_Mesh::erase_vertex(Halfedge_Mesh::VertexRef v) {
+    // assume each mesh has at least 3 sides
+    HalfedgeRef initHalfEdge = v->halfedge();
+    bool newFaceIsBoundary = false;
 
-    (void)v;
-    return std::nullopt;
+    HalfedgeRef halfedge = v->halfedge();
+    // cycle through all the faces
+    do {
+        newFaceIsBoundary |= halfedge->face()->is_boundary();
+        // delete edge and face
+        erase(halfedge->edge());
+        erase(halfedge->face());
+
+        halfedge = halfedge->twin()->next();
+    } while(halfedge != initHalfEdge);
+    FaceRef newFace = new_face(newFaceIsBoundary);
+    newFace->halfedge() = v->halfedge()->next();
+
+    halfedge = v->halfedge();
+    // cycle through all the faces
+    do {
+        HalfedgeRef t_halfEdge = halfedge->next();
+
+        if(t_halfEdge->next() == halfedge) {
+            // degenerate case of two sides
+            return std::nullopt;
+        }
+
+        while(t_halfEdge->next()->next() != halfedge) {
+            t_halfEdge->set_neighbors(t_halfEdge->next(), t_halfEdge->twin(), t_halfEdge->vertex(),
+                                      t_halfEdge->edge(), newFace);
+
+            t_halfEdge = t_halfEdge->next();
+        }
+        // make sure the verticies have hafledges not removed
+        t_halfEdge->next()->vertex()->halfedge() = t_halfEdge->next()->twin()->next();
+
+        erase(halfedge);
+        erase(t_halfEdge->next());
+
+        t_halfEdge->set_neighbors(t_halfEdge->next()->twin()->next(), t_halfEdge->twin(),
+                                  t_halfEdge->vertex(), t_halfEdge->edge(), newFace);
+
+        halfedge = halfedge->twin()->next();
+    } while(halfedge != initHalfEdge);
+    erase(v);
+
+    return newFace;
 }
 
 /*
@@ -108,8 +151,8 @@ std::optional<Halfedge_Mesh::VertexRef> Halfedge_Mesh::split_edge(Halfedge_Mesh:
     parameters. These functions are also passed an array of the original vertex
     positions: for bevel_vertex, it has one element, the original vertex position,
     for bevel_edge, two for the two vertices, and for bevel_face, it has the original
-    position of each vertex in order starting from face->halfedge. You should use these 
-    positions, as well as the normal and tangent offset fields to assign positions to 
+    position of each vertex in order starting from face->halfedge. You should use these
+    positions, as well as the normal and tangent offset fields to assign positions to
     the new vertices.
 
     Finally, note that the normal and tangent offsets are not relative values - you
@@ -205,7 +248,7 @@ void Halfedge_Mesh::bevel_vertex_positions(const std::vector<Vec3>& start_positi
     (in the orig array) to compute an offset vertex position.
 
     Note that there is a 1-to-1 correspondence between halfedges in
-    newHalfedges and vertex positions in start_positions. So, you can write 
+    newHalfedges and vertex positions in start_positions. So, you can write
     loops of the form:
 
     for(size_t i = 0; i < new_halfedges.size(); i++)
@@ -242,7 +285,7 @@ void Halfedge_Mesh::bevel_edge_positions(const std::vector<Vec3>& start_position
     position.
 
     Note that there is a 1-to-1 correspondence between halfedges in
-    new_halfedges and vertex positions in start_positions. So, you can write 
+    new_halfedges and vertex positions in start_positions. So, you can write
     loops of the form:
 
     for(size_t i = 0; i < new_halfedges.size(); i++)
@@ -387,24 +430,24 @@ void Halfedge_Mesh::loop_subdivide() {
     // the new subdivided (fine) mesh, which has more elements to traverse.  We
     // will then assign vertex positions in
     // the new mesh based on the values we computed for the original mesh.
-    
+
     // Compute new positions for all the vertices in the input mesh using
     // the Loop subdivision rule and store them in Vertex::new_pos.
     //    At this point, we also want to mark each vertex as being a vertex of the
     //    original mesh. Use Vertex::is_new for this.
-    
+
     // Next, compute the subdivided vertex positions associated with edges, and
     // store them in Edge::new_pos.
-    
+
     // Next, we're going to split every edge in the mesh, in any order.
-    // We're also going to distinguish subdivided edges that came from splitting 
-    // an edge in the original mesh from new edges by setting the boolean Edge::is_new. 
+    // We're also going to distinguish subdivided edges that came from splitting
+    // an edge in the original mesh from new edges by setting the boolean Edge::is_new.
     // Note that in this loop, we only want to iterate over edges of the original mesh.
     // Otherwise, we'll end up splitting edges that we just split (and the
     // loop will never end!)
-    
+
     // Now flip any new edge that connects an old and new vertex.
-    
+
     // Finally, copy new vertex positions into the Vertex::pos.
 }
 

@@ -133,9 +133,105 @@ std::optional<Halfedge_Mesh::FaceRef> Halfedge_Mesh::erase_edge(Halfedge_Mesh::E
     the new vertex created by the collapse.
 */
 std::optional<Halfedge_Mesh::VertexRef> Halfedge_Mesh::collapse_edge(Halfedge_Mesh::EdgeRef e) {
+    HalfedgeRef halfedge = e->halfedge();
 
-    (void)e;
-    return std::nullopt;
+    // dont handle degenerate case
+    if(halfedge->face()->degree() <= 2 || halfedge->twin()->face()->degree() <= 2)
+        return std::nullopt;
+
+    VertexRef newVertex = new_vertex();
+    newVertex->pos = e->center();
+
+    // change the vertex for the halfedge corresponding to the old vertex
+    HalfedgeRef t_halfEdge = halfedge->twin()->next();
+    while(t_halfEdge != halfedge) {
+        t_halfEdge->vertex() = newVertex;
+        t_halfEdge = t_halfEdge->twin()->next();
+    }
+    erase(halfedge->vertex());
+
+    halfedge = halfedge->twin();
+    t_halfEdge = halfedge->twin()->next();
+    while(t_halfEdge != halfedge) {
+        t_halfEdge->vertex() = newVertex;
+        t_halfEdge = t_halfEdge->twin()->next();
+    }
+    erase(halfedge->vertex());
+
+    // process face corresponding to halfedge
+    // also use halfedge from this face for newVertex.halfedge
+    if(halfedge->face()->degree() == 3) {
+        HalfedgeRef h1 = halfedge->next(), h2 = halfedge->next()->next();
+
+        newVertex->halfedge() = h2->twin();
+
+        EdgeRef newEdge = new_edge();
+        newEdge->halfedge() = h1->twin();
+
+        h1->twin()->twin() = h2->twin();
+        h2->twin()->twin() = h1->twin();
+
+        h2->vertex()->halfedge() = h1->twin();
+
+        erase(h1->edge());
+        erase(h2->edge());
+
+        h1->edge() = newEdge;
+        h1->twin()->edge() = newEdge;
+        h2->edge() = newEdge;
+        h2->twin()->edge() = newEdge;
+
+        erase(halfedge->face());
+        erase(halfedge);
+        erase(h1);
+        erase(h2);
+    } else {
+        // face degree > 3
+        newVertex->halfedge() = halfedge->next();
+
+        HalfedgeRef t_halfEdge = halfedge->next();
+        while(t_halfEdge->next() != halfedge) t_halfEdge = t_halfEdge->next();
+        t_halfEdge->next() = halfedge->next();
+
+        erase(halfedge);
+    }
+
+    halfedge = halfedge->twin();
+    if(halfedge->face()->degree() == 3) {
+        HalfedgeRef h1 = halfedge->next(), h2 = halfedge->next()->next();
+
+        EdgeRef newEdge = new_edge();
+        newEdge->halfedge() = h1->twin();
+
+        h1->twin()->twin() = h2->twin();
+        h2->twin()->twin() = h1->twin();
+
+        h2->vertex()->halfedge() = h1->twin();
+
+        erase(h1->edge());
+        erase(h2->edge());
+
+        h1->edge() = newEdge;
+        h1->twin()->edge() = newEdge;
+        h2->edge() = newEdge;
+        h2->twin()->edge() = newEdge;
+
+        erase(halfedge->face());
+        erase(halfedge);
+        erase(h1);
+        erase(h2);
+    } else {
+        // face degree > 3
+        HalfedgeRef t_halfEdge = halfedge->next();
+        while(t_halfEdge->next() != halfedge) t_halfEdge = t_halfEdge->next();
+        t_halfEdge->next() = halfedge->next();
+
+        erase(halfedge);
+    }
+
+    erase(e);
+
+    return newVertex;
 }
 
 /*

@@ -88,9 +88,44 @@ std::optional<Halfedge_Mesh::FaceRef> Halfedge_Mesh::erase_vertex(Halfedge_Mesh:
     merged face.
  */
 std::optional<Halfedge_Mesh::FaceRef> Halfedge_Mesh::erase_edge(Halfedge_Mesh::EdgeRef e) {
+    // remove halfedge and halfedge.twin corresponding to e, then change the ref to the vertices
+    HalfedgeRef halfedge = e->halfedge();
+    HalfedgeRef twin = halfedge->twin();
+    bool isBoundary = halfedge->is_boundary() || halfedge->twin()->is_boundary();
 
-    (void)e;
-    return std::nullopt;
+    if(halfedge->next() == halfedge || twin->next() == twin) {
+        // degenerate case, return nullopt
+        return std::nullopt;
+    }
+
+    FaceRef newFace = new_face(isBoundary);
+    newFace->halfedge() = halfedge->next();
+
+    halfedge->vertex()->halfedge() = twin->next();
+    twin->vertex()->halfedge() = halfedge->next();
+
+    HalfedgeRef t_halfEdge = halfedge->next();
+    while(t_halfEdge->next() != halfedge) {
+        t_halfEdge->face() = newFace;
+        t_halfEdge = t_halfEdge->next();
+    }
+    t_halfEdge->face() = newFace;
+    t_halfEdge->next() = twin->next();
+
+    t_halfEdge = twin->next();
+    while(t_halfEdge->next() != twin) {
+        t_halfEdge->face() = newFace;
+        t_halfEdge = t_halfEdge->next();
+    }
+    t_halfEdge->face() = newFace;
+    t_halfEdge->next() = halfedge->next();
+
+    erase(halfedge);
+    erase(twin);
+    erase(halfedge->face());
+    erase(twin->face());
+    erase(e);
+    return newFace;
 }
 
 /*

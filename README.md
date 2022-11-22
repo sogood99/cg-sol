@@ -1,6 +1,6 @@
-# cmu-cg-sol
+# cg-sol
 
-Solutions to CMU 15-462.
+Solutions to Computer Graphics.
 
 ## Small Checklist
 

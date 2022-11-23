@@ -18,7 +18,7 @@ Solutions to Computer Graphics.
 - [x] EdgeCollapse
 - [ ] FaceCollapse
 - [x] EdgeFlip
-- [ ] EdgeSplit
+- [x] EdgeSplit
 
 - [ ] Triangulation
 - [ ] LinearSubdivision

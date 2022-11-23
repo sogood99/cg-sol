@@ -249,9 +249,45 @@ std::optional<Halfedge_Mesh::VertexRef> Halfedge_Mesh::collapse_face(Halfedge_Me
     flipped edge.
 */
 std::optional<Halfedge_Mesh::EdgeRef> Halfedge_Mesh::flip_edge(Halfedge_Mesh::EdgeRef e) {
+    HalfedgeRef halfedge = e->halfedge();
+    HalfedgeRef twin = e->halfedge()->twin();
 
-    (void)e;
-    return std::nullopt;
+    // dont handle degenerate case
+    if(halfedge->face()->degree() <= 2 || twin->face()->degree() <= 2) return std::nullopt;
+
+    HalfedgeRef halfedge_next = halfedge->next();
+    HalfedgeRef twin_next = twin->next();
+
+    HalfedgeRef halfedge_last = halfedge_next;
+    while(halfedge_last->next() != halfedge) halfedge_last = halfedge_last->next();
+
+    HalfedgeRef twin_last = twin_next;
+    while(twin_last->next() != twin) twin_last = twin_last->next();
+
+    // change vertex pointers
+    halfedge->vertex()->halfedge() = twin_next;
+    twin->vertex()->halfedge() = halfedge_next;
+
+    halfedge->vertex() = twin_next->next()->vertex();
+    twin->vertex() = halfedge_next->next()->vertex();
+
+    // change face pointers
+    halfedge_next->face() = twin->face();
+    twin_next->face() = halfedge->face();
+
+    halfedge->face()->halfedge() = halfedge;
+    twin->face()->halfedge() = twin;
+
+    // change next pointers
+    halfedge->next() = halfedge_next->next();
+    halfedge_next->next() = twin;
+    halfedge_last->next() = twin_next;
+
+    twin->next() = twin_next->next();
+    twin_next->next() = halfedge;
+    twin_last->next() = halfedge_next;
+
+    return e;
 }
 
 /*

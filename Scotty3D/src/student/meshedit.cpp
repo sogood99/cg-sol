@@ -296,9 +296,114 @@ std::optional<Halfedge_Mesh::EdgeRef> Halfedge_Mesh::flip_edge(Halfedge_Mesh::Ed
     the edge that was split, rather than the new edges.
 */
 std::optional<Halfedge_Mesh::VertexRef> Halfedge_Mesh::split_edge(Halfedge_Mesh::EdgeRef e) {
+    HalfedgeRef h1 = e->halfedge(), h2 = e->halfedge()->twin();
 
-    (void)e;
-    return std::nullopt;
+    // only for triangle meshes
+    if(h1->face()->degree() != 3 || h2->face()->degree() != 3) return std::nullopt;
+
+    // create 6 new halfedges
+    HalfedgeRef h3 = new_halfedge(), h4 = new_halfedge(), h5 = new_halfedge(), h6 = new_halfedge(),
+                h7 = new_halfedge(), h8 = new_halfedge(), h9 = h1->next(), h10 = h1->next()->next(),
+                h11 = h2->next(), h12 = h2->next()->next();
+
+    // create 2 new faces
+    FaceRef f1 = h1->face(), f2 = h2->face(), f3 = new_face(), f4 = new_face();
+    f1->boundary = h1->next()->next()->edge()->on_boundary();
+    f2->boundary = h2->next()->edge()->on_boundary();
+    f3->boundary = h2->next()->next()->edge()->on_boundary();
+    f4->boundary = h1->next()->edge()->on_boundary();
+
+    // create 3 new edges
+    EdgeRef e1 = e, e2 = new_edge(), e3 = new_edge(), e4 = new_edge();
+
+    // create 1 new vertex
+    VertexRef v1 = h1->vertex(), v2 = h2->next()->next()->vertex(), v3 = h2->vertex(),
+              v4 = h1->next()->next()->vertex(), v5 = new_vertex();
+
+    v5->pos = e->center();
+
+    // set the halfedge next, edge, face, verticies
+    h1->next() = h4;
+    h2->next() = h11;
+    h3->next() = h2;
+    h4->next() = h10;
+    h5->next() = h12;
+    h6->next() = h5;
+    h7->next() = h9;
+    h8->next() = h7;
+    h9->next() = h8;
+    h10->next() = h1;
+    h11->next() = h3;
+    h12->next() = h6;
+
+    h1->twin() = h2;
+    h2->twin() = h1;
+    h3->twin() = h5;
+    h4->twin() = h8;
+    h5->twin() = h3;
+    h6->twin() = h7;
+    h7->twin() = h6;
+    h8->twin() = h4;
+
+    h1->edge() = e1;
+    h2->edge() = e1;
+    e1->halfedge() = h1;
+
+    h3->edge() = e2;
+    h5->edge() = e2;
+    e2->halfedge() = h3;
+
+    h6->edge() = e3;
+    h7->edge() = e3;
+    e3->halfedge() = h6;
+
+    h4->edge() = e4;
+    h8->edge() = e4;
+    e4->halfedge() = h4;
+
+    h1->face() = f1;
+    h4->face() = f1;
+    h10->face() = f1;
+    f1->halfedge() = h1;
+
+    h2->face() = f2;
+    h3->face() = f2;
+    h11->face() = f2;
+    f2->halfedge() = h2;
+
+    h5->face() = f3;
+    h6->face() = f3;
+    h12->face() = f3;
+    f3->halfedge() = h5;
+
+    h7->face() = f4;
+    h8->face() = f4;
+    h9->face() = f4;
+    f4->halfedge() = h7;
+
+    h1->vertex() = v1;
+    h11->vertex() = v1;
+    v1->halfedge() = h1;
+
+    h3->vertex() = v2;
+    h12->vertex() = v2;
+    v2->halfedge() = h3;
+
+    h6->vertex() = v3;
+    h9->vertex() = v3;
+    v3->halfedge() = h6;
+
+    h8->vertex() = v4;
+    h10->vertex() = v4;
+    v4->halfedge() = h8;
+
+    h2->vertex() = v5;
+    h5->vertex() = v5;
+    h7->vertex() = v5;
+    h4->vertex() = v5;
+    v5->halfedge() = h2;
+
+    return v5;
 }
 
 /* Note on the beveling process:

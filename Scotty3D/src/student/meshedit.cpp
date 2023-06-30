@@ -1,3 +1,5 @@
+#include <list>
+#include <optional>
 #include <queue>
 #include <set>
 #include <unordered_map>
@@ -240,8 +242,32 @@ std::optional<Halfedge_Mesh::VertexRef> Halfedge_Mesh::collapse_edge(Halfedge_Me
 */
 std::optional<Halfedge_Mesh::VertexRef> Halfedge_Mesh::collapse_face(Halfedge_Mesh::FaceRef f) {
 
-    (void)f;
-    return std::nullopt;
+    Vec3 center_pos = f->center();
+
+    // get all the outer halfedges of the face (without last one since we will collapse_edge)
+    HalfedgeRef he = f->halfedge();
+    std::list<HalfedgeRef> halfedge_list;
+
+    for(uint i = 0; i < f->degree() - 1; i++) {
+        halfedge_list.push_back(he->twin());
+        he = he->next();
+    }
+
+    // collapse all edges and save the resulting vertex
+    VertexRef v = he->vertex();
+    for(HalfedgeRef const& h : halfedge_list) {
+        std::optional<VertexRef> opt_v = collapse_edge(h->edge());
+        if(!opt_v.has_value()) {
+            return std::nullopt;
+        }
+
+        v = opt_v.value();
+    }
+
+    // set vertex position to center
+    v->pos = center_pos;
+
+    return v;
 }
 
 /*

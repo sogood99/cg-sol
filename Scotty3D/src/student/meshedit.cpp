@@ -191,9 +191,13 @@ std::optional<Halfedge_Mesh::VertexRef> Halfedge_Mesh::collapse_edge(Halfedge_Me
         // face degree > 3
         newVertex->halfedge() = halfedge->next();
 
+        // make sure halfedge next is correct
         HalfedgeRef t_halfEdge = halfedge->next();
         while(t_halfEdge->next() != halfedge) t_halfEdge = t_halfEdge->next();
         t_halfEdge->next() = halfedge->next();
+
+        // make sure face halfedge is correct
+        halfedge->face()->halfedge() = t_halfEdge;
 
         erase(halfedge);
     }
@@ -227,6 +231,8 @@ std::optional<Halfedge_Mesh::VertexRef> Halfedge_Mesh::collapse_edge(Halfedge_Me
         HalfedgeRef t_halfEdge = halfedge->next();
         while(t_halfEdge->next() != halfedge) t_halfEdge = t_halfEdge->next();
         t_halfEdge->next() = halfedge->next();
+
+        halfedge->face()->halfedge() = t_halfEdge;
 
         erase(halfedge);
     }
